@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图片拼接工具</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+    background: #f0f2f5; color: #2b2f36; min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(135deg, #4a6cf7, #7a4af7);
+    color: #fff; padding: 18px 28px;
+  }
+  header h1 { font-size: 20px; }
+  header p { font-size: 12px; opacity: .8; margin-top: 4px; }
+  .wrap { display: flex; gap: 16px; padding: 16px; max-width: 1280px; margin: 0 auto; flex-wrap: wrap; }
+  .panel {
+    background: #fff; border-radius: 12px; padding: 16px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.06);
+  }
+  .left { flex: 1 1 300px; min-width: 280px; }
+  .right { flex: 2 1 520px; min-width: 320px; }
+  h2 { font-size: 15px; margin-bottom: 12px; color: #4a6cf7; }
+  h2:not(:first-child) { margin-top: 20px; }
+
+  .drop {
+    border: 2px dashed #b9c4d8; border-radius: 10px; padding: 26px 12px;
+    text-align: center; color: #8a94a6; font-size: 14px; cursor: pointer;
+    transition: .2s;
+  }
+  .drop.over { border-color: #4a6cf7; background: #f0f4ff; color: #4a6cf7; }
+  .drop b { color: #4a6cf7; }
+  #fileInput { display: none; }
+
+  .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .thumb {
+    width: 84px; border: 1px solid #e3e8f0; border-radius: 8px; overflow: hidden;
+    background: #fafbfc; position: relative;
+  }
+  .thumb img { width: 100%; height: 64px; object-fit: cover; display: block; }
+  .thumb .bar { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px; font-size: 11px; }
+  .thumb .bar button {
+    border: none; background: none; cursor: pointer; font-size: 12px; padding: 1px 3px;
+    border-radius: 4px;
+  }
+  .thumb .bar button:hover { background: #eef1f7; }
+  .thumb .del { position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.55); color: #fff;
+    border: none; border-radius: 50%; width: 18px; height: 18px; cursor: pointer; font-size: 11px; line-height: 1; }
+  .empty { color: #aab2c0; font-size: 13px; margin-top: 10px; }
+
+  .row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .row label { font-size: 13px; width: 64px; color: #5a6472; flex-shrink: 0; }
+  .row input[type=range] { flex: 1; accent-color: #4a6cf7; min-width: 100px; }
+  .row input[type=number] { width: 64px; padding: 4px 6px; border: 1px solid #d5dbe6; border-radius: 6px; font-size: 13px; }
+  .row input[type=color] { width: 42px; height: 28px; border: 1px solid #d5dbe6; border-radius: 6px; padding: 1px; background: #fff; cursor: pointer; }
+  .row select { padding: 5px 8px; border: 1px solid #d5dbe6; border-radius: 6px; font-size: 13px; background: #fff; flex: 1; }
+  .row .val { font-size: 12px; color: #8a94a6; min-width: 34px; text-align: right; }
+  .seg { display: flex; border: 1px solid #d5dbe6; border-radius: 8px; overflow: hidden; flex: 1; }
+  .seg button {
+    flex: 1; padding: 6px 0; border: none; background: #fff; cursor: pointer; font-size: 13px; color: #5a6472;
+  }
+  .seg button.on { background: #4a6cf7; color: #fff; }
+
+  .preview-box {
+    background: repeating-conic-gradient(#e8ebf0 0% 25%, #fff 0% 50%) 0 0/20px 20px;
+    border: 1px solid #e3e8f0; border-radius: 10px; min-height: 280px;
+    display: flex; align-items: center; justify-content: center; overflow: auto; padding: 14px;
+  }
+  .preview-box img { max-width: 100%; border-radius: 6px; box-shadow: 0 3px 14px rgba(0,0,0,.12); }
+  .preview-box .tip { color: #aab2c0; font-size: 14px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .btn {
+    padding: 9px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; transition: .15s;
+  }
+  .btn.primary { background: #4a6cf7; color: #fff; }
+  .btn.primary:hover { background: #3a5ce7; }
+  .btn.ghost { background: #eef1f7; color: #4a5568; }
+  .btn.ghost:hover { background: #e2e7f0; }
+  .meta { font-size: 12px; color: #8a94a6; margin-top: 10px; }
+  .hint { font-size: 12px; color: #8a94a6; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧩 图片拼接工具</h1>
+  <p>上传两张或多张图片，按需求拼接成长图 / 横图 / 网格，导出高清 PNG 或 JPG</p>
+</header>
+
+<div class="wrap">
+  <!-- 左：图片与控制 -->
+  <div class="panel left">
+    <h2>① 添加图片</h2>
+    <div class="drop" id="drop">
+      点击选择 或 拖拽图片到此处<br><b>支持多张，JPG / PNG / WebP / GIF</b>
+    </div>
+    <input type="file" id="fileInput" accept="image/*" multiple>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="empty" id="emptyTip">尚未添加图片</div>
+
+    <h2>② 拼接设置</h2>
+    <div class="row"><label>布局</label>
+      <div class="seg" id="layoutSeg">
+        <button data-v="h" class="on">横向</button>
+        <button data-v="v">纵向</button>
+        <button data-v="g">网格</button>
+      </div>
+    </div>
+    <div class="row" id="gridColsRow" style="display:none"><label>网格列数</label>
+      <input type="range" id="gridCols" min="2" max="6" value="2"><span class="val" id="gridColsVal">2</span>
+    </div>
+    <div class="row"><label>图片间距</label>
+      <input type="range" id="gap" min="0" max="60" value="8"><span class="val" id="gapVal">8</span>
+    </div>
+    <div class="row"><label>外边距</label>
+      <input type="range" id="padding" min="0" max="80" value="0"><span class="val" id="paddingVal">0</span>
+    </div>
+    <div class="row"><label>背景色</label>
+      <input type="color" id="bgColor" value="#ffffff">
+      <label style="width:auto"><input type="checkbox" id="transparent"> 透明</label>
+    </div>
+    <div class="row"><label>单元尺寸</label>
+      <select id="cellMode">
+        <option value="auto">自适应（以最大边为准）</option>
+        <option value="fixedW">统一宽度</option>
+        <option value="fixedH">统一高度</option>
+      </select>
+    </div>
+    <div class="row"><label>填充方式</label>
+      <select id="fitMode">
+        <option value="fill">完整显示（留白）</option>
+        <option value="stretch">拉伸铺满</option>
+        <option value="cover">裁剪铺满</option>
+      </select>
+    </div>
+    <div class="row"><label>圆角</label>
+      <input type="range" id="radius" min="0" max="40" value="0"><span class="val" id="radiusVal">0</span>
+    </div>
+    <div class="row"><label>最大宽度</label>
+      <input type="range" id="maxW" min="400" max="4096" step="100" value="2000"><span class="val" id="maxWVal">2000</span>
+    </div>
+    <div class="hint">💡 提示：图片顺序可用缩略图上的 ◀ ▶ 调整；「统一宽度/高度」时所有单元格同宽/同高，配合填充方式可获得整齐排版。</div>
+  </div>
+
+  <!-- 右：预览与导出 -->
+  <div class="panel right">
+    <h2>③ 实时预览</h2>
+    <div class="preview-box" id="previewBox"><span class="tip">添加图片后自动生成预览</span></div>
+    <div class="meta" id="meta"></div>
+    <div class="actions">
+      <button class="btn primary" id="download">⬇ 导出 PNG</button>
+      <button class="btn ghost" id="downloadJpg">⬇ 导出 JPG</button>
+      <button class="btn ghost" id="clearBtn">清空全部</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var images = [];   // {img, name}
+  var $ = function(id){ return document.getElementById(id); };
+
+  // ---------- 图片加载 ----------
+  var drop = $('drop'), fileInput = $('fileInput');
+  drop.addEventListener('click', function(){ fileInput.click(); });
+  ['dragover','dragenter'].forEach(function(e){
+    drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(function(e){
+    drop.addEventListener(e, function(ev){ ev.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(ev){ addFiles(ev.dataTransfer.files); });
+  fileInput.addEventListener('change', function(){ addFiles(fileInput.files); fileInput.value=''; });
+
+  function addFiles(files){
+    Array.prototype.forEach.call(files, function(f){
+      if (!f.type.match(/^image\//)) return;
+      var reader = new FileReader();
+      reader.onload = function(){
+        var img = new Image();
+        img.onload = function(){ images.push({img:img, name:f.name}); renderThumbs(); compose(); };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(f);
+    });
+  }
+
+  // ---------- 缩略图列表 ----------
+  function renderThumbs(){
+    var box = $('thumbs'); box.innerHTML = '';
+    $('emptyTip').style.display = images.length ? 'none' : 'block';
+    images.forEach(function(item, i){
+      var d = document.createElement('div'); d.className = 'thumb';
+      var im = document.createElement('img'); im.src = item.img.src; im.title = item.name;
+      var del = document.createElement('button'); del.className = 'del'; del.textContent = '×';
+      del.onclick = function(){ images.splice(i,1); renderThumbs(); compose(); };
+      var bar = document.createElement('div'); bar.className = 'bar';
+      var l = document.createElement('button'); l.textContent = '◀';
+      l.onclick = function(){ if(i>0){ var t=images[i-1]; images[i-1]=images[i]; images[i]=t; renderThumbs(); compose(); } };
+      var idx = document.createElement('span'); idx.textContent = (i+1);
+      var r = document.createElement('button'); r.textContent = '▶';
+      r.onclick = function(){ if(i<images.length-1){ var t=images[i+1]; images[i+1]=images[i]; images[i]=t; renderThumbs(); compose(); } };
+      bar.appendChild(l); bar.appendChild(idx); bar.appendChild(r);
+      d.appendChild(im); d.appendChild(del); d.appendChild(bar);
+      box.appendChild(d);
+    });
+  }
+
+  // ---------- 控件 ----------
+  var state = { layout:'h', gridCols:2, gap:8, padding:0, bg:'#ffffff', transparent:false,
+                cellMode:'auto', fitMode:'fill', radius:0, maxW:2000 };
+
+  function bindRange(id, key, valId){
+    $(id).addEventListener('input', function(){
+      state[key] = +this.value; $(valId).textContent = this.value; compose();
+    });
+  }
+  bindRange('gap','gap','gapVal');
+  bindRange('padding','padding','paddingVal');
+  bindRange('radius','radius','radiusVal');
+  bindRange('maxW','maxW','maxWVal');
+  bindRange('gridCols','gridCols','gridColsVal');
+
+  $('bgColor').addEventListener('input', function(){ state.bg = this.value; state.transparent=false; $('transparent').checked=false; compose(); });
+  $('transparent').addEventListener('change', function(){ state.transparent = this.checked; compose(); });
+  $('cellMode').addEventListener('change', function(){ state.cellMode = this.value; compose(); });
+  $('fitMode').addEventListener('change', function(){ state.fitMode = this.value; compose(); });
+
+  var segBtns = $('layoutSeg').querySelectorAll('button');
+  segBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      segBtns.forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      state.layout = b.dataset.v;
+      $('gridColsRow').style.display = state.layout==='g' ? 'flex' : 'none';
+      compose();
+    });
+  });
+
+  $('clearBtn').addEventListener('click', function(){ images = []; renderThumbs(); compose(); });
+
+  // ---------- 核心：计算布局并绘制 ----------
+  function naturalW(im){ return im.naturalWidth; }
+  function naturalH(im){ return im.naturalHeight; }
+
+  function computeCells(){
+    // 返回 {cells:[{img,x,y,w,h,drawX,drawY,drawW,drawH}], W, H}
+    var n = images.length;
+    if (!n) return null;
+    var gap = state.gap, pad = state.padding, radius = state.radius;
+
+    // 1) 确定每个单元格的宽/高（不含间距）
+    var cells = images.map(function(it){ return {img: it.img, w:0, h:0}; });
+
+    if (state.cellMode === 'fixedW') {
+      var maxw = 0;
+      cells.forEach(function(c){ maxw = Math.max(maxw, naturalW(c.img)); });
+      cells.forEach(function(c){ c.w = maxw; c.h = maxw * naturalH(c.img)/naturalW(c.img); });
+    } else if (state.cellMode === 'fixedH') {
+      var maxh = 0;
+      cells.forEach(function(c){ maxh = Math.max(maxh, naturalH(c.img)); });
+      cells.forEach(function(c){ c.h = maxh; c.w = maxh * naturalW(c.img)/naturalH(c.img); });
+    } else { // auto：每张图自身尺寸
+      cells.forEach(function(c){ c.w = naturalW(c.img); c.h = naturalH(c.img); });
+    }
+
+    // 2) 布局：求总宽/总高
+    var W, H;
+    if (state.layout === 'h') {
+      W = cells.reduce(function(a,c){ return a+c.w; }, 0) + gap*(n-1);
+      H = Math.max.apply(null, cells.map(function(c){ return c.h; }));
+    } else if (state.layout === 'v') {
+      W = Math.max.apply(null, cells.map(function(c){ return c.w; }));
+      H = cells.reduce(function(a,c){ return a+c.h; }, 0) + gap*(n-1);
+    } else { // grid
+      var cols = Math.min(state.gridCols, n);
+      var rows = Math.ceil(n/cols);
+      var colW = [], rowH = [];
+      cells.forEach(function(c, i){
+        var col = i % cols, row = Math.floor(i/cols);
+        colW[col] = Math.max(colW[col]||0, c.w);
+        rowH[row] = Math.max(rowH[row]||0, c.h);
+      });
+      W = colW.reduce(function(a,b){return a+b;},0) + gap*(cols-1);
+      H = rowH.reduce(function(a,b){return a+b;},0) + gap*(rows-1);
+      // 记录网格信息供定位
+      cells.forEach(function(c, i){
+        var col = i % cols, row = Math.floor(i/cols);
+        c.gx = colW.slice(0,col).reduce(function(a,b){return a+b;},0) + gap*col;
+        c.gy = rowH.slice(0,row).reduce(function(a,b){return a+b;},0) + gap*row;
+      });
+    }
+
+    // 3) 应用最大宽度缩放
+    var scale = W > state.maxW ? state.maxW / W : 1;
+
+    // 4) 逐个定位（容器内左上对齐 + 填充方式）
+    var px = pad, py = pad;
+    var pos = [];
+    cells.forEach(function(c, i){
+      var x, y, cw, ch;
+      if (state.layout === 'h') {
+        cw = H * (c.w/c.h); // 以行高为基准重算（保持单元比例）
+        ch = H;
+        x = px; y = py;
+        px += cw + gap;
+      } else if (state.layout === 'v') {
+        cw = W;
+        ch = W * (c.h/c.w);
+        x = px; y = py;
+        py += ch + gap;
+      } else {
+        cw = W; // 网格：单元 = 该列宽/行高已由 gx/gy 决定，这里简化为整格
+        ch = H;
+        x = px + c.gx; y = py + c.gy;
+        // 网格单元格尺寸 = 所在列宽/行高（再算一次）
+        // 重新按行高列宽定位已在 gx/gy 中，单元格宽高用列宽行高
+      }
+      pos.push({x:x, y:y, cw:cw, ch:ch, cell:c});
+    });
+
+    // 网格模式下用列宽/行高作为单元尺寸
+    if (state.layout === 'g') {
+      var cols = Math.min(state.gridCols, n);
+      var colW = [], rowH = [];
+      cells.forEach(function(c, i){
+        var col = i % cols, row = Math.floor(i/cols);
+        colW[col] = Math.max(colW[col]||0, c.w);
+        rowH[row] = Math.max(rowH[row]||0, c.h);
+      });
+      pos.forEach(function(p){
+        var i = pos.indexOf(p);
+        var col = i % cols, row = Math.floor(i/cols);
+        p.cw = colW[col]; p.ch = rowH[row];
+      });
+    }
+
+    // 5) 整体缩放 + 计算绘制区域（填充方式）
+    var totalW = (W + pad*2) * scale, totalH = (H + pad*2) * scale;
+    pos.forEach(function(p){
+      p.x *= scale; p.y *= scale; p.cw *= scale; p.ch *= scale;
+      var iw = naturalW(p.cell.img), ih = naturalH(p.cell.img);
+      var dx=p.x, dy=p.y, dw=p.cw, dh=p.ch;
+      if (state.fitMode === 'fill') {
+        // 完整显示，居中留白
+        var s = Math.min(p.cw/iw, p.ch/ih);
+        dw = iw*s; dh = ih*s;
+        dx = p.x + (p.cw-dw)/2; dy = p.y + (p.ch-dh)/2;
+      } else if (state.fitMode === 'stretch') {
+        dw = p.cw; dh = p.ch;
+      } else { // cover
+        var s2 = Math.max(p.cw/iw, p.ch/ih);
+        dw = iw*s2; dh = ih*s2;
+        dx = p.x + (p.cw-dw)/2; dy = p.y + (p.ch-dh)/2;
+      }
+      p.dx=dx; p.dy=dy; p.dw=dw; p.dh=dh;
+    });
+
+    return {pos:pos, W:Math.round(totalW), H:Math.round(totalH)};
+  }
+
+  var lastCanvas = null;
+  function compose(){
+    var box = $('previewBox'), meta = $('meta');
+    if (!images.length){
+      box.innerHTML = '<span class="tip">添加图片后自动生成预览</span>';
+      meta.textContent = ''; lastCanvas = null; return;
+    }
+    var lay = computeCells();
+    var canvas = document.createElement('canvas');
+    canvas.width = lay.W; canvas.height = lay.H;
+    var ctx = canvas.getContext('2d');
+    if (!state.transparent){ ctx.fillStyle = state.bg; ctx.fillRect(0,0,lay.W,lay.H); }
+    lay.pos.forEach(function(p){
+      ctx.save();
+      if (state.radius > 0){
+        var r = Math.min(state.radius, p.cw/2, p.ch/2);
+        ctx.beginPath();
+        ctx.roundRect(p.x, p.y, p.cw, p.ch, r);
+        ctx.clip();
+      }
+      ctx.drawImage(p.cell.img, p.dx, p.dy, p.dw, p.dh);
+      ctx.restore();
+    });
+    lastCanvas = canvas;
+    var url = canvas.toDataURL('image/png');
+    box.innerHTML = '';
+    var im = document.createElement('img'); im.src = url;
+    box.appendChild(im);
+    meta.textContent = '输出尺寸：' + lay.W + ' × ' + lay.H + ' px ｜ 共 ' + images.length + ' 张图片';
+  }
+
+  function save(type){
+    if (!lastCanvas){ alert('请先添加图片'); return; }
+    lastCanvas.toBlob(function(blob){
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '拼接_' + new Date().getTime() + '.' + (type==='jpg'?'jpg':'png');
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 2000);
+    }, type==='jpg' ? 'image/jpeg' : 'image/png', 0.92);
+  }
+  $('download').addEventListener('click', function(){ save('png'); });
+  $('downloadJpg').addEventListener('click', function(){ save('jpg'); });
+})();
+</script>
+</body>
+</html>
