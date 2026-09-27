@@ -32,7 +32,6 @@
     transition: .2s;
   }
   .drop.over { border-color: #4a6cf7; background: #f0f4ff; color: #4a6cf7; }
-  .drop b { color: #4a6cf7; }
   #fileInput { display: none; }
 
   .thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
@@ -91,7 +90,6 @@
 </header>
 
 <div class="wrap">
-  <!-- 左：图片与控制 -->
   <div class="panel left">
     <h2>① 添加图片</h2>
     <div class="drop" id="drop">
@@ -142,10 +140,9 @@
     <div class="row"><label>最大宽度</label>
       <input type="range" id="maxW" min="400" max="4096" step="100" value="2000"><span class="val" id="maxWVal">2000</span>
     </div>
-    <div class="hint">💡 提示：图片顺序可用缩略图上的 ◀ ▶ 调整；「统一宽度/高度」时所有单元格同宽/同高，配合填充方式可获得整齐排版。</div>
+    <div class="hint">💡 图片过多（原图总高超过 16000px）时浏览器画布会超限，请调低「最大宽度」或改用网格布局。缩略图上的 ◀ ▶ 可调整顺序。</div>
   </div>
 
-  <!-- 右：预览与导出 -->
   <div class="panel right">
     <h2>③ 实时预览</h2>
     <div class="preview-box" id="previewBox"><span class="tip">添加图片后自动生成预览</span></div>
@@ -160,10 +157,9 @@
 
 <script>
 (function(){
-  var images = [];   // {img, name}
+  var images = [];
   var $ = function(id){ return document.getElementById(id); };
 
-  // ---------- 图片加载 ----------
   var drop = $('drop'), fileInput = $('fileInput');
   drop.addEventListener('click', function(){ fileInput.click(); });
   ['dragover','dragenter'].forEach(function(e){
@@ -181,14 +177,13 @@
       var reader = new FileReader();
       reader.onload = function(){
         var img = new Image();
-        img.onload = function(){ images.push({img:img, name:f.name}); renderThumbs(); compose(); };
+        img.onload = function(){ images.push({img:img, name:f.name}); renderThumbs(); composeDebounced(); };
         img.src = reader.result;
       };
       reader.readAsDataURL(f);
     });
   }
 
-  // ---------- 缩略图列表 ----------
   function renderThumbs(){
     var box = $('thumbs'); box.innerHTML = '';
     $('emptyTip').style.display = images.length ? 'none' : 'block';
@@ -196,26 +191,25 @@
       var d = document.createElement('div'); d.className = 'thumb';
       var im = document.createElement('img'); im.src = item.img.src; im.title = item.name;
       var del = document.createElement('button'); del.className = 'del'; del.textContent = '×';
-      del.onclick = function(){ images.splice(i,1); renderThumbs(); compose(); };
+      del.onclick = function(){ images.splice(i,1); renderThumbs(); composeDebounced(); };
       var bar = document.createElement('div'); bar.className = 'bar';
       var l = document.createElement('button'); l.textContent = '◀';
-      l.onclick = function(){ if(i>0){ var t=images[i-1]; images[i-1]=images[i]; images[i]=t; renderThumbs(); compose(); } };
+      l.onclick = function(){ if(i>0){ var t=images[i-1]; images[i-1]=images[i]; images[i]=t; renderThumbs(); composeDebounced(); } };
       var idx = document.createElement('span'); idx.textContent = (i+1);
       var r = document.createElement('button'); r.textContent = '▶';
-      r.onclick = function(){ if(i<images.length-1){ var t=images[i+1]; images[i+1]=images[i]; images[i]=t; renderThumbs(); compose(); } };
+      r.onclick = function(){ if(i<images.length-1){ var t=images[i+1]; images[i+1]=images[i]; images[i]=t; renderThumbs(); composeDebounced(); } };
       bar.appendChild(l); bar.appendChild(idx); bar.appendChild(r);
       d.appendChild(im); d.appendChild(del); d.appendChild(bar);
       box.appendChild(d);
     });
   }
 
-  // ---------- 控件 ----------
   var state = { layout:'h', gridCols:2, gap:8, padding:0, bg:'#ffffff', transparent:false,
                 cellMode:'auto', fitMode:'fill', radius:0, maxW:2000 };
 
   function bindRange(id, key, valId){
     $(id).addEventListener('input', function(){
-      state[key] = +this.value; $(valId).textContent = this.value; compose();
+      state[key] = +this.value; $(valId).textContent = this.value; composeDebounced();
     });
   }
   bindRange('gap','gap','gapVal');
@@ -224,10 +218,10 @@
   bindRange('maxW','maxW','maxWVal');
   bindRange('gridCols','gridCols','gridColsVal');
 
-  $('bgColor').addEventListener('input', function(){ state.bg = this.value; state.transparent=false; $('transparent').checked=false; compose(); });
-  $('transparent').addEventListener('change', function(){ state.transparent = this.checked; compose(); });
-  $('cellMode').addEventListener('change', function(){ state.cellMode = this.value; compose(); });
-  $('fitMode').addEventListener('change', function(){ state.fitMode = this.value; compose(); });
+  $('bgColor').addEventListener('input', function(){ state.bg = this.value; state.transparent=false; $('transparent').checked=false; composeDebounced(); });
+  $('transparent').addEventListener('change', function(){ state.transparent = this.checked; composeDebounced(); });
+  $('cellMode').addEventListener('change', function(){ state.cellMode = this.value; composeDebounced(); });
+  $('fitMode').addEventListener('change', function(){ state.fitMode = this.value; composeDebounced(); });
 
   var segBtns = $('layoutSeg').querySelectorAll('button');
   segBtns.forEach(function(b){
@@ -236,23 +230,20 @@
       b.classList.add('on');
       state.layout = b.dataset.v;
       $('gridColsRow').style.display = state.layout==='g' ? 'flex' : 'none';
-      compose();
+      composeDebounced();
     });
   });
 
   $('clearBtn').addEventListener('click', function(){ images = []; renderThumbs(); compose(); });
 
-  // ---------- 核心：计算布局并绘制 ----------
   function naturalW(im){ return im.naturalWidth; }
   function naturalH(im){ return im.naturalHeight; }
 
   function computeCells(){
-    // 返回 {cells:[{img,x,y,w,h,drawX,drawY,drawW,drawH}], W, H}
     var n = images.length;
     if (!n) return null;
-    var gap = state.gap, pad = state.padding, radius = state.radius;
+    var gap = state.gap, pad = state.padding;
 
-    // 1) 确定每个单元格的宽/高（不含间距）
     var cells = images.map(function(it){ return {img: it.img, w:0, h:0}; });
 
     if (state.cellMode === 'fixedW') {
@@ -263,11 +254,10 @@
       var maxh = 0;
       cells.forEach(function(c){ maxh = Math.max(maxh, naturalH(c.img)); });
       cells.forEach(function(c){ c.h = maxh; c.w = maxh * naturalW(c.img)/naturalH(c.img); });
-    } else { // auto：每张图自身尺寸
+    } else {
       cells.forEach(function(c){ c.w = naturalW(c.img); c.h = naturalH(c.img); });
     }
 
-    // 2) 布局：求总宽/总高
     var W, H;
     if (state.layout === 'h') {
       W = cells.reduce(function(a,c){ return a+c.w; }, 0) + gap*(n-1);
@@ -275,7 +265,7 @@
     } else if (state.layout === 'v') {
       W = Math.max.apply(null, cells.map(function(c){ return c.w; }));
       H = cells.reduce(function(a,c){ return a+c.h; }, 0) + gap*(n-1);
-    } else { // grid
+    } else {
       var cols = Math.min(state.gridCols, n);
       var rows = Math.ceil(n/cols);
       var colW = [], rowH = [];
@@ -286,7 +276,6 @@
       });
       W = colW.reduce(function(a,b){return a+b;},0) + gap*(cols-1);
       H = rowH.reduce(function(a,b){return a+b;},0) + gap*(rows-1);
-      // 记录网格信息供定位
       cells.forEach(function(c, i){
         var col = i % cols, row = Math.floor(i/cols);
         c.gx = colW.slice(0,col).reduce(function(a,b){return a+b;},0) + gap*col;
@@ -294,64 +283,53 @@
       });
     }
 
-    // 3) 应用最大宽度缩放
     var scale = W > state.maxW ? state.maxW / W : 1;
 
-    // 4) 逐个定位（容器内左上对齐 + 填充方式）
     var px = pad, py = pad;
     var pos = [];
-    cells.forEach(function(c, i){
+    cells.forEach(function(c){
       var x, y, cw, ch;
       if (state.layout === 'h') {
-        cw = H * (c.w/c.h); // 以行高为基准重算（保持单元比例）
-        ch = H;
+        cw = H * (c.w/c.h); ch = H;
         x = px; y = py;
         px += cw + gap;
       } else if (state.layout === 'v') {
-        cw = W;
-        ch = W * (c.h/c.w);
+        cw = W; ch = W * (c.h/c.w);
         x = px; y = py;
         py += ch + gap;
       } else {
-        cw = W; // 网格：单元 = 该列宽/行高已由 gx/gy 决定，这里简化为整格
-        ch = H;
+        cw = W; ch = H;
         x = px + c.gx; y = py + c.gy;
-        // 网格单元格尺寸 = 所在列宽/行高（再算一次）
-        // 重新按行高列宽定位已在 gx/gy 中，单元格宽高用列宽行高
       }
       pos.push({x:x, y:y, cw:cw, ch:ch, cell:c});
     });
 
-    // 网格模式下用列宽/行高作为单元尺寸
     if (state.layout === 'g') {
-      var cols = Math.min(state.gridCols, n);
-      var colW = [], rowH = [];
+      var cols2 = Math.min(state.gridCols, n);
+      var colW2 = [], rowH2 = [];
       cells.forEach(function(c, i){
-        var col = i % cols, row = Math.floor(i/cols);
-        colW[col] = Math.max(colW[col]||0, c.w);
-        rowH[row] = Math.max(rowH[row]||0, c.h);
+        var col = i % cols2, row = Math.floor(i/cols2);
+        colW2[col] = Math.max(colW2[col]||0, c.w);
+        rowH2[row] = Math.max(rowH2[row]||0, c.h);
       });
-      pos.forEach(function(p){
-        var i = pos.indexOf(p);
-        var col = i % cols, row = Math.floor(i/cols);
-        p.cw = colW[col]; p.ch = rowH[row];
+      pos.forEach(function(p, i){
+        var col = i % cols2, row = Math.floor(i/cols2);
+        p.cw = colW2[col]; p.ch = rowH2[row];
       });
     }
 
-    // 5) 整体缩放 + 计算绘制区域（填充方式）
     var totalW = (W + pad*2) * scale, totalH = (H + pad*2) * scale;
     pos.forEach(function(p){
       p.x *= scale; p.y *= scale; p.cw *= scale; p.ch *= scale;
       var iw = naturalW(p.cell.img), ih = naturalH(p.cell.img);
       var dx=p.x, dy=p.y, dw=p.cw, dh=p.ch;
       if (state.fitMode === 'fill') {
-        // 完整显示，居中留白
         var s = Math.min(p.cw/iw, p.ch/ih);
         dw = iw*s; dh = ih*s;
         dx = p.x + (p.cw-dw)/2; dy = p.y + (p.ch-dh)/2;
       } else if (state.fitMode === 'stretch') {
         dw = p.cw; dh = p.ch;
-      } else { // cover
+      } else {
         var s2 = Math.max(p.cw/iw, p.ch/ih);
         dw = iw*s2; dh = ih*s2;
         dx = p.x + (p.cw-dw)/2; dy = p.y + (p.ch-dh)/2;
@@ -362,18 +340,17 @@
     return {pos:pos, W:Math.round(totalW), H:Math.round(totalH)};
   }
 
-  var lastCanvas = null;
-  function compose(){
-    var box = $('previewBox'), meta = $('meta');
-    if (!images.length){
-      box.innerHTML = '<span class="tip">添加图片后自动生成预览</span>';
-      meta.textContent = ''; lastCanvas = null; return;
-    }
-    var lay = computeCells();
+  var lastLayout = null;
+  var PREVIEW_MAX = 1400;
+  var CANVAS_LIMIT = 16000;
+
+  function drawScaled(lay, scale){
     var canvas = document.createElement('canvas');
-    canvas.width = lay.W; canvas.height = lay.H;
+    canvas.width = Math.max(1, Math.round(lay.W * scale));
+    canvas.height = Math.max(1, Math.round(lay.H * scale));
     var ctx = canvas.getContext('2d');
-    if (!state.transparent){ ctx.fillStyle = state.bg; ctx.fillRect(0,0,lay.W,lay.H); }
+    ctx.scale(scale, scale);
+    if (!state.transparent){ ctx.fillStyle = state.bg; ctx.fillRect(0, 0, lay.W, lay.H); }
     lay.pos.forEach(function(p){
       ctx.save();
       if (state.radius > 0){
@@ -385,17 +362,46 @@
       ctx.drawImage(p.cell.img, p.dx, p.dy, p.dw, p.dh);
       ctx.restore();
     });
-    lastCanvas = canvas;
-    var url = canvas.toDataURL('image/png');
+    return canvas;
+  }
+
+  var composeTimer = null;
+  function compose(){
+    var box = $('previewBox'), meta = $('meta');
+    if (!images.length){
+      box.innerHTML = '<span class="tip">添加图片后自动生成预览</span>';
+      meta.textContent = ''; lastLayout = null; return;
+    }
+    var lay = computeCells();
+    lastLayout = lay;
+    var scale = Math.min(1, PREVIEW_MAX / Math.max(lay.W, lay.H));
+    var canvas = drawScaled(lay, scale);
+    var url = state.transparent ? canvas.toDataURL('image/png')
+                                : canvas.toDataURL('image/jpeg', 0.85);
     box.innerHTML = '';
     var im = document.createElement('img'); im.src = url;
     box.appendChild(im);
-    meta.textContent = '输出尺寸：' + lay.W + ' × ' + lay.H + ' px ｜ 共 ' + images.length + ' 张图片';
+    var warn = (lay.W > CANVAS_LIMIT || lay.H > CANVAS_LIMIT)
+      ? ' ｜ ⚠️ 超出浏览器画布安全上限，请调低最大宽度或改用网格布局'
+      : '';
+    meta.textContent = '输出尺寸：' + lay.W + ' × ' + lay.H + ' px ｜ 共 '
+      + images.length + ' 张图片' + warn;
+  }
+  function composeDebounced(){
+    clearTimeout(composeTimer);
+    composeTimer = setTimeout(compose, 120);
   }
 
   function save(type){
-    if (!lastCanvas){ alert('请先添加图片'); return; }
-    lastCanvas.toBlob(function(blob){
+    if (!lastLayout){ alert('请先添加图片'); return; }
+    if (lastLayout.W > CANVAS_LIMIT || lastLayout.H > CANVAS_LIMIT){
+      alert('拼接结果 ' + lastLayout.W + ' × ' + lastLayout.H
+        + ' px 超出浏览器画布单边上限（约 16000px）。\n\n建议：\n'
+        + '· 调低「最大宽度」\n· 改用网格布局\n· 换用尺寸更小的原图');
+      return;
+    }
+    var canvas = drawScaled(lastLayout, 1);
+    canvas.toBlob(function(blob){
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = '拼接_' + new Date().getTime() + '.' + (type==='jpg'?'jpg':'png');
